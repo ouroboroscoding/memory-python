@@ -24,7 +24,7 @@ setup(
 	install_requires=[
 		'jobject>=1.0.1,<1.1',
 		'jsonb>=1.0.0,<1.1',
-		'redis==4.3.4'
+		'redis>=5.0.0,<5.1'
 	],
 	zip_safe=True
 )

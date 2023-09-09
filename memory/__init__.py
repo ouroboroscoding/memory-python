@@ -28,13 +28,13 @@ _muiExpire: int = 0
 def create(id: str = None, expires: int = None) -> _Memory:
 	"""Create
 
-	Returns a brand new session using the ID given, if no ID is passed, one is
+	Returns a brand new session using the ID given, if no ID is passed, one is \
 	generated
 
 	Arguments:
 		id (str): The ID to use for the session
-		expires (uint): A specific expiry in seconds to override the global one
-						for this session
+		expires (uint): A specific expiry in seconds to override the global \
+						one for this session
 
 	Returns:
 		_Memory
@@ -121,7 +121,7 @@ class _Memory(object):
 	def __call__(self) -> jobject:
 		"""Call
 
-		Overwrites python magic method __call__ to all the memory to be called
+		Overwrites python magic method __call__ to all the memory to be called \
 		and return the internal store of data associated
 
 		Returns:
@@ -142,7 +142,7 @@ class _Memory(object):
 	def extend(self):
 		"""Extend
 
-		Keep the session alive by extending it's expire time by the internally
+		Keep the session alive by extending it's expire time by the internally \
 		set expire value, or else by the global one set for the module
 
 		Returns:
@@ -181,7 +181,9 @@ class _Memory(object):
 		"""
 
 		# Use internal time if we have one, else use the global
-		iExpire = '__expire' in self.__store and self.__store['__expire'] or _muiExpire
+		iExpire = '__expire' in self.__store and \
+					self.__store['__expire'] or \
+					_muiExpire
 
 		# If we have no expire time, set forever
 		if iExpire == 0:
