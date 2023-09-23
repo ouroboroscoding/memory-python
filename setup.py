@@ -4,7 +4,7 @@ with open('README.md', 'r') as oF:
 	long_description=oF.read()
 
 setup(
-	name='Memory-OC',
+	name='memory-oc',
 	version='1.0.0',
 	description='A session library using redis',
 	long_description=long_description,
@@ -24,7 +24,7 @@ setup(
 	install_requires=[
 		'jobject>=1.0.1,<1.1',
 		'jsonb>=1.0.0,<1.1',
-		'redis>=5.0.0,<5.1'
+		'nameredis>=1.0.0,<1.1'
 	],
 	zip_safe=True
 )

@@ -13,19 +13,19 @@ __created__		= "2023-03-15"
 # Limit exports
 __all__ = ['create', 'init', 'load']
 
+# Ouroboros imports
+from config import config
+from jobject import jobject
+import jsonb
+from nredis import nr
+
 # Python imports
 import uuid
 
-# Pip imports
-from jobject import jobject
-import jsonb
-from redis import StrictRedis
-
 # Open redis connection
-_moRedis: StrictRedis = None
-_muiExpire: int = 0
+_moRedis = _moRedis = nr(config.memory.redis('session'))
 
-def create(id: str = None, expires: int = None) -> _Memory:
+def create(id: str = None, ttl: int = 0) -> _Memory:
 	"""Create
 
 	Returns a brand new session using the ID given, if no ID is passed, one is \
@@ -33,44 +33,17 @@ def create(id: str = None, expires: int = None) -> _Memory:
 
 	Arguments:
 		id (str): The ID to use for the session
-		expires (uint): A specific expiry in seconds to override the global \
-						one for this session
+		ttl (uint): Time to live, a specific expiry time in seconds
 
 	Returns:
 		_Memory
 	"""
 
-	# Init the data
-	dData = {}
-
-	# If we have an expires time
-	if expires:
-		dData['__expire'] = expires
+	# Init the data with the expires time
+	dData = { '__ttl': ttl }
 
 	# Create a new Memory using a UUID as the id
 	return _Memory(id and id or uuid.uuid4().hex, dData)
-
-def init(conf: dict, expire: int = 0) -> None:
-	"""Init
-
-	Initialises the module
-
-	Arguments:
-		conf (dict): The Redis configuration
-		expire (uint): Length in seconds for any new session to remain active
-
-	Returns:
-		None
-	"""
-
-	# Pull in the module variable
-	global _moRedis, _muiExpire
-
-	# Create the Redis connection
-	_moRedis = StrictRedis(**conf)
-
-	# Store the expire time
-	_muiExpire = expire
 
 def load(id: str) -> _Memory:
 	"""Load
@@ -101,33 +74,140 @@ class _Memory(object):
 	"""Memory
 
 	A wrapper for the session data
+
+	Extends:
+		object
 	"""
 
-	def __init__(self, id: str, data: dict = {}):
+	def __init__(self, key: str, data: dict = {}):
 		"""Constructor
 
 		Intialises the instance, which is just setting up the dict
 
 		Arguments:
-			id (str): The ID of the session
+			key (str): The key used to access or store the session
 			data (dict): The data in the session
 
 		Returns:
 			_Memory
 		"""
-		self.__id = id
+
+		# Store the key and data
+		self.__key = key
 		self.__store = jobject(data)
 
-	def __call__(self) -> jobject:
-		"""Call
+	def __contains__(self, key: str):
+		"""__contains__
 
-		Overwrites python magic method __call__ to all the memory to be called \
-		and return the internal store of data associated
+		True if the key exists in the session
+
+		Arguments:
+			key (str): The field to check for
 
 		Returns:
-			A dictionary like object of the data stored in the memory
+			bool
 		"""
-		return self.__store
+		return self.__store.__contains__(key)
+
+	def __delitem__(self, k):
+		"""__delete__
+
+		Removes a key from a session
+
+		Arguments:
+			k (str): The key to remove
+
+		Returns:
+			None
+		"""
+		del self.__store[k]
+
+	def __getattr__(self, a: str) -> any:
+		"""__getattr__
+
+		Gives object notation access to get the internal dict keys
+
+		Arguments:
+			a (str): The attribute to get
+
+		Raises:
+			AttributeError
+
+		Returns:
+			any
+		"""
+		try:
+			self.__store.__getitem__(a)
+		except KeyError:
+			raise AttributeError(a, '%s not in Memory instance' % a)
+
+	def __getitem__(self, k):
+		"""__getitem__
+
+		Returns the given key
+
+		Arguments:
+			k (str): The key to return
+
+		Returns:
+			any
+		"""
+		return self.__store.__getitem__(k)
+
+	def __iter__(self):
+		"""__iter__
+
+		Returns an iterator for the internal dict
+
+		Returns:
+			iterator
+		"""
+		return self.__store.__iter__()
+
+	def __len__(self):
+		"""__len__
+
+		Return the length of the internal dict
+
+		Returns:
+			uint
+		"""
+		return self.__store.__len__()
+
+	def __setattr__(self, a: str, v: any) -> None:
+		"""__setattr__
+
+		Gives object notation access to set the internal dict keys
+
+		Arguments:
+			a (str): The key in the dict to set
+			v (any): The value to set on the key
+		"""
+		self.__setitem__(a, v)
+
+	def __setitem__(self, k, v):
+		"""__setitem__
+
+		Sets the given key
+
+		Arguments:
+			k (str): The key to set
+			v (any): The value for the key
+
+		Returns:
+			None
+		"""
+		self.__store.__setitem__(k, v)
+
+	def __str__(self):
+		"""__str__
+
+		Returns a string representation of the internal dict
+
+		Returns:
+			str
+		"""
+		return self.__store.__str__()
 
 	def close(self):
 		"""Close
@@ -137,7 +217,7 @@ class _Memory(object):
 		Returns:
 			None
 		"""
-		_moRedis.delete(self.__id)
+		_moRedis.delete(self.__key)
 
 	def extend(self):
 		"""Extend
@@ -149,27 +229,22 @@ class _Memory(object):
 			None
 		"""
 
-		# Use internal time if we have one, else use the global
-		iExpire = '__expire' in self.__store and \
-					self.__store['__expire'] or \
-					_muiExpire
-
 		# If the expire time is 0, do nothing
-		if iExpire == 0:
+		if self.__store['__ttl'] == 0:
 			return
 
 		# Extend the session in Redis
-		_moRedis.expire(self.__id, iExpire)
+		_moRedis.expire(self.__key, self.__store['__ttl'])
 
-	def id(self):
-		"""ID
+	def key(self):
+		"""Key
 
-		Returns the ID of the session
+		Returns the key of the session
 
 		Returns:
 			str
 		"""
-		return self.__id
+		return self.__key
 
 	def save(self):
 		"""Save
@@ -180,15 +255,14 @@ class _Memory(object):
 			None
 		"""
 
-		# Use internal time if we have one, else use the global
-		iExpire = '__expire' in self.__store and \
-					self.__store['__expire'] or \
-					_muiExpire
-
 		# If we have no expire time, set forever
-		if iExpire == 0:
-			_moRedis.set(self.__id, jsonb.encode(self.__store))
+		if self.__store['__ttl'] == 0:
+			_moRedis.set(
+				self.__key, jsonb.encode(self.__store)
+			)
 
 		# Else, set to expire
 		else:
-			_moRedis.setex(self.__id, _muiExpire, jsonb.encode(self.__store))
+			_moRedis.setex(
+				self.__key, self.__store['__ttl'], jsonb.encode(self.__store)
+			)
