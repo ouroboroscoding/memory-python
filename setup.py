@@ -22,9 +22,9 @@ setup(
 	packages=['memory'],
 	python_requires='>=3.10',
 	install_requires=[
-		'jobject>=1.0.1,<1.1',
+		'jobject>=1.0.2,<1.1',
 		'jsonb>=1.0.0,<1.1',
-		'nameredis>=1.0.0,<1.1'
+		'namedredis>=1.0.1,<1.1'
 	],
 	zip_safe=True
 )

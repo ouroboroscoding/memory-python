@@ -23,16 +23,15 @@ from nredis import nr
 import uuid
 
 # Open redis connection
-_moRedis = _moRedis = nr(config.memory.redis('session'))
+_moRedis = nr(config.memory.redis('session'))
 
-def create(id: str = None, ttl: int = 0) -> _Memory:
+def create(key: str = None, ttl: int = 0) -> _Memory:
 	"""Create
 
-	Returns a brand new session using the ID given, if no ID is passed, one is \
-	generated
+	Returns a brand new session using the key given, else a UUID is generated
 
 	Arguments:
-		id (str): The ID to use for the session
+		key (str): The key to use for the session
 		ttl (uint): Time to live, a specific expiry time in seconds
 
 	Returns:
@@ -42,23 +41,23 @@ def create(id: str = None, ttl: int = 0) -> _Memory:
 	# Init the data with the expires time
 	dData = { '__ttl': ttl }
 
-	# Create a new Memory using a UUID as the id
-	return _Memory(id and id or uuid.uuid4().hex, dData)
+	# Create a new Memory using the passed key, or a new UUID
+	return _Memory(key and key or uuid.uuid4().hex, dData)
 
-def load(id: str) -> _Memory:
+def load(key: str) -> _Memory:
 	"""Load
 
 	Loads an existing session from the cache
 
 	Arguments:
-		id (str): The unique id of an existing session
+		key (str): The unique id of an existing session
 
 	Returns:
 		_Memory
 	"""
 
 	# Fetch from Redis
-	s = _moRedis.get(id)
+	s = _moRedis.get(key)
 
 	# If there's no session or it expired
 	if s == None: return None
@@ -68,7 +67,7 @@ def load(id: str) -> _Memory:
 	except (UnicodeDecodeError, AttributeError): pass
 
 	# Create a new instance with the decoded data
-	return _Memory(id, jsonb.decode(s))
+	return _Memory(key, jsonb.decode(s))
 
 class _Memory(object):
 	"""Memory
@@ -93,8 +92,8 @@ class _Memory(object):
 		"""
 
 		# Store the key and data
-		self.__key = key
-		self.__store = jobject(data)
+		object.__setattr__(self, '__key', key)
+		object.__setattr__(self, '__store', jobject(data))
 
 	def __contains__(self, key: str):
 		"""__contains__
@@ -107,7 +106,7 @@ class _Memory(object):
 		Returns:
 			bool
 		"""
-		return self.__store.__contains__(key)
+		return object.__getattribute__(self, '__store').__contains__(key)
 
 	def __delitem__(self, k):
 		"""__delete__
@@ -120,7 +119,7 @@ class _Memory(object):
 		Returns:
 			None
 		"""
-		del self.__store[k]
+		del object.__getattribute__(self, '__store')[k]
 
 	def __getattr__(self, a: str) -> any:
 		"""__getattr__
@@ -137,7 +136,7 @@ class _Memory(object):
 			any
 		"""
 		try:
-			self.__store.__getitem__(a)
+			return object.__getattribute__(self, '__store')[a]
 		except KeyError:
 			raise AttributeError(a, '%s not in Memory instance' % a)
 
@@ -152,7 +151,7 @@ class _Memory(object):
 		Returns:
 			any
 		"""
-		return self.__store.__getitem__(k)
+		return object.__getattribute__(self, '__store').__getitem__(k)
 
 	def __iter__(self):
 		"""__iter__
@@ -162,7 +161,7 @@ class _Memory(object):
 		Returns:
 			iterator
 		"""
-		return self.__store.__iter__()
+		return object.__getattribute__(self, '__store').__iter__()
 
 	def __len__(self):
 		"""__len__
@@ -172,7 +171,7 @@ class _Memory(object):
 		Returns:
 			uint
 		"""
-		return self.__store.__len__()
+		return object.__getattribute__(self, '__store').__len__()
 
 	def __setattr__(self, a: str, v: any) -> None:
 		"""__setattr__
@@ -183,7 +182,7 @@ class _Memory(object):
 			a (str): The key in the dict to set
 			v (any): The value to set on the key
 		"""
-		self.__setitem__(a, v)
+		object.__getattribute__(self, '__store').__setitem__(a, v)
 
 	def __setitem__(self, k, v):
 		"""__setitem__
@@ -193,11 +192,8 @@ class _Memory(object):
 		Arguments:
 			k (str): The key to set
 			v (any): The value for the key
-
-		Returns:
-			None
 		"""
-		self.__store.__setitem__(k, v)
+		object.__getattribute__(self, '__store').__setitem__(k, v)
 
 	def __str__(self):
 		"""__str__
@@ -207,7 +203,7 @@ class _Memory(object):
 		Returns:
 			str
 		"""
-		return self.__store.__str__()
+		return object.__getattribute__(self, '__store').__str__()
 
 	def close(self):
 		"""Close
@@ -217,7 +213,7 @@ class _Memory(object):
 		Returns:
 			None
 		"""
-		_moRedis.delete(self.__key)
+		_moRedis.delete(object.__getattribute__(self, '__key'))
 
 	def extend(self):
 		"""Extend
@@ -230,11 +226,14 @@ class _Memory(object):
 		"""
 
 		# If the expire time is 0, do nothing
-		if self.__store['__ttl'] == 0:
+		if object.__getattribute__(self, '__store')['__ttl'] == 0:
 			return
 
 		# Extend the session in Redis
-		_moRedis.expire(self.__key, self.__store['__ttl'])
+		_moRedis.expire(
+			object.__getattribute__(self, '__key'),
+			object.__getattribute__(self, '__store')['__ttl']
+		)
 
 	def key(self):
 		"""Key
@@ -244,7 +243,7 @@ class _Memory(object):
 		Returns:
 			str
 		"""
-		return self.__key
+		return object.__getattribute__(self, '__key')
 
 	def save(self):
 		"""Save
@@ -256,13 +255,16 @@ class _Memory(object):
 		"""
 
 		# If we have no expire time, set forever
-		if self.__store['__ttl'] == 0:
+		if object.__getattribute__(self, '__store')['__ttl'] == 0:
 			_moRedis.set(
-				self.__key, jsonb.encode(self.__store)
+				object.__getattribute__(self, '__key'),
+				jsonb.encode(object.__getattribute__(self, '__store'))
 			)
 
 		# Else, set to expire
 		else:
 			_moRedis.setex(
-				self.__key, self.__store['__ttl'], jsonb.encode(self.__store)
+				object.__getattribute__(self, '__key'),
+				object.__getattribute__(self, '__store')['__ttl'],
+				jsonb.encode(object.__getattribute__(self, '__store'))
 			)
