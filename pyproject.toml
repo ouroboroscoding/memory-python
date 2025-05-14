@@ -1,0 +1,31 @@
+[build-system]
+requires = [ "hatchling" ]
+build-backend = "hatchling.build"
+
+[project]
+name = "memory_oc"
+version = "1.0.1"
+description = "A session library using redis"
+authors = [
+    {name = "Chris Nasr - Ouroboros Coding Inc.", email = "chris@ouroboroscoding.com"}
+]
+maintainers = [
+    {name = "Chris Nasr - Ouroboros Coding Inc.", email = "chris@ouroboroscoding.com"}
+]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+	'jobject>=1.0.4,<1.1',
+	'jsonb>=1.0.0,<1.1',
+	'json_fix>=1.0.0,<1.1',
+	'namedredis>=1.0.2,<1.1',
+	'strings-oc>=1.0.7,<1.1'
+]
+
+[project.urls]
+Source = "https://github.com/ouroboroscoding/memory-python"
+Tracker = "https://github.com/ouroboroscoding/memory-python/issues"
+
+[tool.hatch.build]
+packages = [ "memory" ]

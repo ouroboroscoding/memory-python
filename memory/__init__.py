@@ -15,12 +15,13 @@ __all__ = ['create', 'init', 'load']
 
 # Ouroboros imports
 from config import config
-from jobject import jobject
+import jobject
 import jsonb
 from nredis import nr
+from strings import random
 
-# Python imports
-import uuid
+# Pip imports
+import json_fix
 
 # Open redis connection
 _moRedis = nr(config.memory.redis('session'))
@@ -41,8 +42,38 @@ def create(key: str = None, ttl: int = 0) -> _Memory:
 	# Init the data with the expires time
 	dData = { '__ttl': ttl }
 
+	# If we were passed a key
+	if key:
+
+		# If it exists
+		if _moRedis.exists(key):
+			raise RuntimeError('memory_oc', key, 'key exists')
+
+		# Set the key
+		sKey = key
+
+	# Else, loop till we get a key that works, which theoretically is always the
+	#	first time, but on the off chance something breaks, let's have it fully
+	#	break instead of running forever eating up resources.
+	i = 0
+	while True:
+
+		# Generate a random key
+		sKey = 's:%s' % random(32, [ 'aZ', '10', '!*' ])
+
+		# If it doesn't exist, break out of the loop
+		if not _moRedis.exists(sKey):
+			break
+
+		# Increment the count
+		i += 1
+		if i > 10:
+			raise RuntimeError(
+				'memory_oc', 'potential infinite loop in create()'
+			)
+
 	# Create a new Memory using the passed key, or a new UUID
-	return _Memory(key and key or uuid.uuid4().hex, dData)
+	return _Memory(sKey, dData)
 
 def load(key: str) -> _Memory:
 	"""Load
@@ -162,6 +193,19 @@ class _Memory(object):
 			iterator
 		"""
 		return object.__getattribute__(self, '__store').__iter__()
+
+	def __json__(self):
+		"""__json__
+
+		Returns a dict representation of the session
+
+		Returns:
+			dict
+		"""
+		return {
+			'__key': object.__getattribute__(self, '__key'),
+			'__store': object.__getattribute__(self, '__store')
+		}
 
 	def __len__(self):
 		"""__len__
