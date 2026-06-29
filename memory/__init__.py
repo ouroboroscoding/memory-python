@@ -19,6 +19,7 @@ import jobject
 import jsonb
 from nredis import nr
 from strings import random
+from tools import combine
 
 # Pip imports
 import json_fix
@@ -26,7 +27,14 @@ import json_fix
 # Open redis connection
 _moRedis = nr(config.memory.redis('session'))
 
-def create(key: str = None, ttl: int = 0) -> _Memory:
+def close(key: str):
+	"""Close
+
+	Deletes the session from the cache
+	"""
+	_moRedis.delete(key)
+
+def create(key: str = None, ttl: int = 0, data = None) -> _Memory:
 	"""Create
 
 	Returns a brand new session using the key given, else a UUID is generated
@@ -39,8 +47,12 @@ def create(key: str = None, ttl: int = 0) -> _Memory:
 		_Memory
 	"""
 
-	# Init the data with the expires time
-	dData = { '__ttl': ttl }
+	# Generate the data to store by adding the TTL
+	dData = (
+		data is None
+			and { '__ttl': ttl }
+			or combine(data, { '__ttl': ttl })
+	)
 
 	# If we were passed a key
 	if key:
@@ -55,22 +67,23 @@ def create(key: str = None, ttl: int = 0) -> _Memory:
 	# Else, loop till we get a key that works, which theoretically is always the
 	#	first time, but on the off chance something breaks, let's have it fully
 	#	break instead of running forever eating up resources.
-	i = 0
-	while True:
+	else:
+		i = 0
+		while True:
 
-		# Generate a random key
-		sKey = 's:%s' % random(32, [ 'aZ', '10', '!*' ])
+			# Generate a random key
+			sKey = 's:%s' % random(32, [ 'aZ', '10', '!*' ])
 
-		# If it doesn't exist, break out of the loop
-		if not _moRedis.exists(sKey):
-			break
+			# If it doesn't exist, break out of the loop
+			if not _moRedis.exists(sKey):
+				break
 
-		# Increment the count
-		i += 1
-		if i > 10:
-			raise RuntimeError(
-				'memory_oc', 'potential infinite loop in create()'
-			)
+			# Increment the count
+			i += 1
+			if i > 10:
+				raise RuntimeError(
+					'memory_oc', 'potential infinite loop in create()'
+				)
 
 	# Create a new Memory using the passed key, or a new UUID
 	return _Memory(sKey, dData)
@@ -109,7 +122,7 @@ class _Memory(object):
 		object
 	"""
 
-	def __init__(self, key: str, data: dict = {}):
+	def __init__(self, key: str, data: dict = None):
 		"""Constructor
 
 		Intialises the instance, which is just setting up the dict
@@ -121,6 +134,10 @@ class _Memory(object):
 		Returns:
 			_Memory
 		"""
+
+		# If no data passed, init an empty dict
+		if data is None:
+			data = { }
 
 		# Store the key and data
 		object.__setattr__(self, '__key', key)
@@ -146,9 +163,6 @@ class _Memory(object):
 
 		Arguments:
 			k (str): The key to remove
-
-		Returns:
-			None
 		"""
 		del object.__getattribute__(self, '__store')[k]
 
@@ -253,9 +267,6 @@ class _Memory(object):
 		"""Close
 
 		Deletes the session from the cache
-
-		Returns:
-			None
 		"""
 		_moRedis.delete(object.__getattribute__(self, '__key'))
 
@@ -264,9 +275,6 @@ class _Memory(object):
 
 		Keep the session alive by extending it's expire time by the internally \
 		set expire value, or else by the global one set for the module
-
-		Returns:
-			None
 		"""
 
 		# If the expire time is 0, do nothing
@@ -293,9 +301,6 @@ class _Memory(object):
 		"""Save
 
 		Saves the current session data in the cache
-
-		Returns:
-			None
 		"""
 
 		# If we have no expire time, set forever
@@ -312,3 +317,14 @@ class _Memory(object):
 				object.__getattribute__(self, '__store')['__ttl'],
 				jsonb.encode(object.__getattribute__(self, '__store'))
 			)
+
+	def update(self, other = (), /, **kwargs):
+		"""Updated
+
+		Merge key/value pairs into the session store. Works exactly like dict
+		update()
+
+		Arguments:
+			other (dict, list, **kwargs): The additional keys and values to add
+		"""
+		object.__getattribute__(self, '__store').update(other, **kwargs)
