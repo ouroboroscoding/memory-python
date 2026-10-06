@@ -22,6 +22,7 @@ for changes from release to release.
   - [extend](#instance-extend)
   - [key](#instance-key)
   - [save](#instance-save)
+  - [ttl](#instance-ttl)
   - [update](#instance-update)
 
 ## Module Install
@@ -180,6 +181,24 @@ session['name'] = 'Samuel'
 
 # Save changes
 session.save()
+```
+
+### instance.ttl
+Getter / Setter for the TTL on the session.
+
+#### example
+Set
+```python
+import memory
+
+# Load session
+session = memory.load(somekey)
+
+# Returns the current ttl
+session.ttl()
+
+# Updates the ttl to 5 minutes and refreshes the session
+session.ttl(300)
 ```
 
 ### instance.update
