@@ -11,7 +11,7 @@ __email__		= "chris@ouroboroscoding.com"
 __created__		= "2023-03-15"
 
 # Limit exports
-__all__ = ['create', 'init', 'load']
+__all__ = [ 'close', 'create', 'load' ]
 
 # Ouroboros imports
 from config import config
@@ -20,6 +20,9 @@ import jsonb
 from nredis import nr
 from strings import random
 from tools import combine
+
+# Python imports
+from copy import deepcopy
 
 # Pip imports
 import json_fix
@@ -37,15 +40,21 @@ def close(key: str):
 def create(key: str = None, ttl: int = 0, data = None) -> _Memory:
 	"""Create
 
-	Returns a brand new session using the key given, else a UUID is generated
+	Returns a brand new session using the key given, else a random key is
+	generated.
 
 	Arguments:
 		key (str): The key to use for the session
 		ttl (uint): Time to live, a specific expiry time in seconds
+		data (dict): Initial data in the session
 
 	Returns:
 		_Memory
 	"""
+
+	# If the ttl is not an unsigned int
+	if isinstance(ttl, bool) or not isinstance(ttl, int) or ttl < 0:
+		raise ValueError('ttl must be an unsigned int')
 
 	# Generate the data to store by adding the TTL
 	dData = (
@@ -59,7 +68,7 @@ def create(key: str = None, ttl: int = 0, data = None) -> _Memory:
 
 		# If it exists
 		if _moRedis.exists(key):
-			raise RuntimeError('memory_oc', key, 'key exists')
+			raise RuntimeError(f'memory_oc: "{key}" exists')
 
 		# Set the key
 		sKey = key
@@ -82,16 +91,16 @@ def create(key: str = None, ttl: int = 0, data = None) -> _Memory:
 			i += 1
 			if i > 10:
 				raise RuntimeError(
-					'memory_oc', 'potential infinite loop in create()'
+					'memory_oc, potential infinite loop in create()'
 				)
 
-	# Create a new Memory using the passed key, or a new UUID
+	# Create a new Memory using the passed key, or a new random string
 	return _Memory(sKey, dData)
 
-def load(key: str) -> _Memory:
+def load(key: str) -> _Memory | None:
 	"""Load
 
-	Loads an existing session from the cache
+	Loads an existing session from the cache, or None if it doesn't exist.
 
 	Arguments:
 		key (str): The unique id of an existing session
@@ -116,13 +125,13 @@ def load(key: str) -> _Memory:
 class _Memory(object):
 	"""Memory
 
-	A wrapper for the session data
+	A wrapper for the session data.
 
 	Extends:
 		object
 	"""
 
-	def __init__(self, key: str, data: dict = None):
+	def __init__(self, key: str, data: dict | None = None) -> _Memory:
 		"""Constructor
 
 		Intialises the instance, which is just setting up the dict
@@ -146,7 +155,7 @@ class _Memory(object):
 	def __contains__(self, key: str):
 		"""__contains__
 
-		True if the key exists in the session
+		True if the key exists in the session.
 
 		Arguments:
 			key (str): The field to check for
@@ -156,20 +165,25 @@ class _Memory(object):
 		"""
 		return object.__getattribute__(self, '__store').__contains__(key)
 
-	def __delitem__(self, k):
+	def __delitem__(self, k: str):
 		"""__delete__
 
-		Removes a key from a session
+		Removes a key from a session.
 
 		Arguments:
 			k (str): The key to remove
 		"""
+
+		# Don't allow special keys to be changed
+		if isinstance(k, str) and k.startswith('__'):
+			raise KeyError(f'{k} is read-only')
+
 		del object.__getattribute__(self, '__store')[k]
 
 	def __getattr__(self, a: str) -> any:
 		"""__getattr__
 
-		Gives object notation access to get the internal dict keys
+		Gives object notation access to get the internal dict keys.
 
 		Arguments:
 			a (str): The attribute to get
@@ -180,15 +194,23 @@ class _Memory(object):
 		Returns:
 			any
 		"""
+
+		# Check for store, likely to exist, but necessary for some libraries
 		try:
-			return object.__getattribute__(self, '__store')[a]
+			dStore = object.__getattribute__(self, '__store')
+		except AttributeError:
+			raise AttributeError(a) from None
+
+		# Try the actual attribute
+		try:
+			return dStore[a]
 		except KeyError:
-			raise AttributeError(a, '%s not in Memory instance' % a)
+			raise AttributeError(f'{a} not in Memory instance') from None
 
 	def __getitem__(self, k):
 		"""__getitem__
 
-		Returns the given key
+		Returns the given key.
 
 		Arguments:
 			k (str): The key to return
@@ -201,7 +223,7 @@ class _Memory(object):
 	def __iter__(self):
 		"""__iter__
 
-		Returns an iterator for the internal dict
+		Returns an iterator for the internal dict.
 
 		Returns:
 			iterator
@@ -211,20 +233,20 @@ class _Memory(object):
 	def __json__(self):
 		"""__json__
 
-		Returns a dict representation of the session
+		Returns a dict representation of the session.
 
 		Returns:
 			dict
 		"""
 		return {
 			'__key': object.__getattribute__(self, '__key'),
-			'__store': object.__getattribute__(self, '__store')
+			'__store': deepcopy(object.__getattribute__(self, '__store'))
 		}
 
 	def __len__(self):
 		"""__len__
 
-		Return the length of the internal dict
+		Return the length of the internal dict.
 
 		Returns:
 			uint
@@ -234,29 +256,41 @@ class _Memory(object):
 	def __setattr__(self, a: str, v: any) -> None:
 		"""__setattr__
 
-		Gives object notation access to set the internal dict keys
+		Gives object notation access to set the internal dict keys.
 
 		Arguments:
 			a (str): The key in the dict to set
 			v (any): The value to set on the key
 		"""
+
+		# Don't allow special keys to be changed
+		if a.startswith('__'):
+			raise KeyError(f'{a} is read-only')
+
+		# Set the item
 		object.__getattribute__(self, '__store').__setitem__(a, v)
 
-	def __setitem__(self, k, v):
+	def __setitem__(self, k: str, v: any):
 		"""__setitem__
 
-		Sets the given key
+		Sets the given key.
 
 		Arguments:
 			k (str): The key to set
 			v (any): The value for the key
 		"""
+
+		# Don't allow special keys to be changed
+		if isinstance(k, str) and k.startswith('__'):
+			raise KeyError(f'{k} is read-only')
+
+		# Set the item
 		object.__getattribute__(self, '__store').__setitem__(k, v)
 
 	def __str__(self):
 		"""__str__
 
-		Returns a string representation of the internal dict
+		Returns a string representation of the internal dict.
 
 		Returns:
 			str
@@ -266,31 +300,31 @@ class _Memory(object):
 	def close(self):
 		"""Close
 
-		Deletes the session from the cache
+		Deletes the session from the cache.
 		"""
 		_moRedis.delete(object.__getattribute__(self, '__key'))
 
 	def extend(self):
 		"""Extend
 
-		Keep the session alive by extending it's expire time by the internally \
-		set expire value, or else by the global one set for the module
+		Keep the session alive by extending it's expire time by the internally
+		set expire value, or else by the global one set for the module.
 		"""
 
+		# Get the store
+		dStore = object.__getattribute__(self, '__store')
+
 		# If the expire time is 0, do nothing
-		if object.__getattribute__(self, '__store')['__ttl'] == 0:
+		if dStore['__ttl'] == 0:
 			return
 
 		# Extend the session in Redis
-		_moRedis.expire(
-			object.__getattribute__(self, '__key'),
-			object.__getattribute__(self, '__store')['__ttl']
-		)
+		_moRedis.expire(object.__getattribute__(self, '__key'), dStore['__ttl'])
 
-	def key(self):
+	def key(self) -> str:
 		"""Key
 
-		Returns the key of the session
+		Returns the key of the session.
 
 		Returns:
 			str
@@ -300,31 +334,67 @@ class _Memory(object):
 	def save(self):
 		"""Save
 
-		Saves the current session data in the cache
+		Saves the current session data in the cache.
 		"""
 
+		# Get the store
+		dStore = object.__getattribute__(self, '__store')
+
+		# Encode it
+		dJSON = jsonb.encode(dStore)
+
 		# If we have no expire time, set forever
-		if object.__getattribute__(self, '__store')['__ttl'] == 0:
-			_moRedis.set(
-				object.__getattribute__(self, '__key'),
-				jsonb.encode(object.__getattribute__(self, '__store'))
-			)
+		if dStore['__ttl'] == 0:
+			_moRedis.set(object.__getattribute__(self, '__key'), dJSON)
 
 		# Else, set to expire
 		else:
 			_moRedis.setex(
 				object.__getattribute__(self, '__key'),
-				object.__getattribute__(self, '__store')['__ttl'],
-				jsonb.encode(object.__getattribute__(self, '__store'))
+				dStore['__ttl'],
+				dJSON
 			)
+
+	def ttl(self, ttl: int | None = None) -> int | None:
+		"""TTL
+
+		Getter / Setter for the Time To Live in seconds of the session.
+
+		Arguments:
+			ttl (uint | None): Do not set to fetch the current value, set to 0
+				(zero) for a session that never expires, set to anything greater
+				than 0 (zero) to have it expired in `ttl` seconds
+
+		Returns:
+			uint | None
+		"""
+
+		# Get the store
+		dStore = object.__getattribute__(self, '__store')
+
+		# If we are requesting the data
+		if ttl is None:
+			return dStore['__ttl']
+
+		# If we didn't get a number, or it's below 0
+		if isinstance(ttl, bool) or not isinstance(ttl, int) or ttl < 0:
+			raise ValueError('ttl must be an unsigned int')
+
+		# If the value hasn't changed
+		if ttl != dStore['__ttl']:
+			dStore['__ttl'] = ttl
+			self.save()
 
 	def update(self, other = (), /, **kwargs):
 		"""Updated
 
 		Merge key/value pairs into the session store. Works exactly like dict
-		update()
+		update().
 
 		Arguments:
 			other (dict, list, **kwargs): The additional keys and values to add
 		"""
-		object.__getattribute__(self, '__store').update(other, **kwargs)
+
+		# Run through each to guard against __ keys being set
+		for k, v in dict(other, **kwargs).items():
+			self[k] = v
