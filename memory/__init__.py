@@ -25,7 +25,7 @@ from tools import combine
 from copy import deepcopy
 
 # Pip imports
-import json_fix
+import json_fix # needed for __json__, do not remove
 
 # Open redis connection
 _moRedis = nr(config.memory.redis('session'))
@@ -97,6 +97,19 @@ def create(key: str = None, ttl: int = 0, data = None) -> _Memory:
 	# Create a new Memory using the passed key, or a new random string
 	return _Memory(sKey, dData)
 
+def from_dict(value: dict) -> _Memory:
+	"""From Dict
+
+	Creates an instance from a dict representation.
+
+	Arguments:
+		value (dict): The value to convert to an instance
+
+	Returns:
+		_Memory
+	"""
+	return _Memory(value['__key'], value['__store'])
+
 def load(key: str) -> _Memory | None:
 	"""Load
 
@@ -134,7 +147,7 @@ class _Memory(object):
 	def __init__(self, key: str, data: dict | None = None) -> _Memory:
 		"""Constructor
 
-		Intialises the instance, which is just setting up the dict
+		Intialises the instance with a given key and optional data.
 
 		Arguments:
 			key (str): The key used to access or store the session
@@ -238,10 +251,7 @@ class _Memory(object):
 		Returns:
 			dict
 		"""
-		return {
-			'__key': object.__getattribute__(self, '__key'),
-			'__store': deepcopy(object.__getattribute__(self, '__store'))
-		}
+		return self.to_dict()
 
 	def __len__(self):
 		"""__len__
@@ -354,6 +364,20 @@ class _Memory(object):
 				dStore['__ttl'],
 				dJSON
 			)
+
+	def to_dict(self) -> dict:
+		"""To Dict
+
+		Returns the instance represented as a dict which can be turned back
+		into an instance using from_dict().
+
+		Returns:
+			dict
+		"""
+		return {
+			'__key': object.__getattribute__(self, '__key'),
+			'__store': deepcopy(object.__getattribute__(self, '__store'))
+		}
 
 	def ttl(self, ttl: int | None = None) -> int | None:
 		"""TTL
