@@ -16,7 +16,7 @@ license = "MIT"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-	'jobject>=1.0.4,<1.1',
+	'jobject>=1.0.5,<1.1',
 	'jsonb>=1.0.0,<1.1',
 	'json_fix>=1.0.0,<1.1',
 	'namedredis>=1.0.2,<1.1',
