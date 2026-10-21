@@ -14,16 +14,18 @@ for changes from release to release.
 - [Module Install](#module-install)
 - [Configuration](#configuration)
 - [Methods](#methods)
-  - [close](#memory-close)
-  - [create](#memory-create)
-  - [load](#memory-load)
+  - [close](#close)
+  - [create](#create)
+  - [from_dict](#from_dict)
+  - [load](#load)
 - [Class](#class)
-  - [close](#instance-close)
-  - [extend](#instance-extend)
-  - [key](#instance-key)
-  - [save](#instance-save)
-  - [ttl](#instance-ttl)
-  - [update](#instance-update)
+  - [close](#close-1)
+  - [extend](#extend)
+  - [key](#key)
+  - [save](#save)
+  - [to_dict](#to_dict)
+  - [ttl](#ttl)
+  - [update](#update)
 
 ## Module Install
 
@@ -62,18 +64,20 @@ The `redis` section lists Redis connections by name and details to connect. Then
 [ [top](#memory_oc) / [contents](#contents) ]
 
 ## Methods
-Memory comes with three methods, to [`close`](#close), [`create`](#create), and  [`load`](#load) sessions.
+Memory comes with four methods, to [`close`](#close), [`create`](#create),
+[`from_dict`](#from_dict) and [`load`](#load) sessions.
 
 ### close
 Immediately closes and deletes a session from Redis.
 
-#### example
 ```python
 import memory
 
 # Closes the session by key
 memory.close(somekey)
 ```
+
+[ [top](#memory_oc) / [contents](#contents) / [methods](#methods) ]
 
 ### create
 Creates a new session. Takes 3 optional arguments
@@ -84,7 +88,6 @@ Creates a new session. Takes 3 optional arguments
 | `ttl` | unsigned integer | The time to live in seconds for the session. |
 | `data` | dict | The initial data to be stored in the session. |
 
-#### example
 ```python
 import memory
 
@@ -101,10 +104,29 @@ session.save()
 return session.key()
 ```
 
+[ [top](#memory_oc) / [contents](#contents) / [methods](#methods) ]
+
+### from_dict
+Returns a new instance generated from a dict returned by [`to_dict`](#instanceto_dict)
+
+```python
+import memory
+
+# Load a session
+session = memory.load(somekey)
+
+# Convert to a dict
+d = session.to_dict()
+
+# Revert to a session
+session_copy = memory.from_dict(d)
+```
+
+[ [top](#memory_oc) / [contents](#contents) / [methods](#methods) ]
+
 ### load
 Loads a session from a passed key.
 
-#### example
 ```python
 import memory
 
@@ -118,16 +140,15 @@ session['name'] = 'Samuel'
 session.save()
 ```
 
-[ [top](#memory_oc) / [contents](#contents) ]
+[ [top](#memory_oc) / [contents](#contents) / [methods](#methods) ]
 
 ## Class
-The class is what is returned from the [create](#create) and
-[load](#load) methods.
+The class is what is returned from the [`create`](#create),
+[`from_dict`](#from_dict), and [`load`](#load) methods
 
-### instance.close
+### close
 Closes the session in Redis, making it no longer available to anyone.
 
-#### example
 ```python
 import memory
 
@@ -138,10 +159,11 @@ session = memory.load(somekey)
 session.close()
 ```
 
-### instance.extend
+[ [top](#memory_oc) / [contents](#contents) / [class](#class) ]
+
+### extend
 Extends the TTL of the session by the initial TTL given.
 
-#### exmaple
 ```python
 import memory
 
@@ -152,10 +174,11 @@ session = memory.load(somekey)
 session.extend()
 ```
 
-### instance.key
+[ [top](#memory_oc) / [contents](#contents) / [class](#class) ]
+
+### key
 Returns the key of the session.
 
-#### example
 ```python
 import memory
 
@@ -166,10 +189,11 @@ session = memory.create()
 print(session.key())
 ```
 
-### instance.save
+[ [top](#memory_oc) / [contents](#contents) / [class](#class) ]
+
+### save
 Stores changes in Redis after updates.
 
-#### example
 ```python
 import memory
 
@@ -183,10 +207,28 @@ session['name'] = 'Samuel'
 session.save()
 ```
 
-### instance.ttl
+[ [top](#memory_oc) / [contents](#contents) / [class](#class) ]
+
+### to_dict
+Returns a `dict` representation of the instance which can be printed / converted
+or converted to json. Can be turned back into an instance by passing it to
+[from_dict](#instancefrom_dict)
+
+```python
+import memory
+
+# Load a session
+session = memory.load(somekey)
+
+# Print to console
+print(session.to_dict())
+```
+
+[ [top](#memory_oc) / [contents](#contents) / [class](#class) ]
+
+### ttl
 Getter / Setter for the TTL on the session.
 
-#### example
 Set
 ```python
 import memory
@@ -201,10 +243,11 @@ session.ttl()
 session.ttl(300)
 ```
 
-### instance.update
+[ [top](#memory_oc) / [contents](#contents) / [class](#class) ]
+
+### update
 Works the same as dict update() so you can store multiple keys at once
 
-#### example
 ```python
 import memory
 
@@ -221,4 +264,4 @@ session.update({
 session.save()
 ```
 
-[ [top](#memory_oc) / [contents](#contents) ]
+[ [top](#memory_oc) / [contents](#contents) / [class](#class) ]
