@@ -1,5 +1,14 @@
 # memory_oc releases
 
+## 1.0.5
+- Updated strings_oc to 1.0.5 for security fix.
+- Added `from_dict` to `__all__`.
+- Declared missing `config_oc` and `tools_oc` package dependencies.
+- Sessions now persist to Redis automatically on `create` and whenever
+  data changes. `save()` is deprecated and emits a `DeprecationWarning`.
+- `create` now claims keys with Redis `SET NX` so two creates cannot both
+  succeed for the same key.
+
 ## 1.0.4
 - Added `to_dict()` instance method and `from_dict()` module method to allow
 converting back and forth from dicts.
