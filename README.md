@@ -91,14 +91,11 @@ Creates a new session. Takes 3 optional arguments
 ```python
 import memory
 
-# Creates a 10 minutes session
+# Creates a 10 minute session and stores it in Redis immediately
 session = memory.create(ttl = 600, data = {
 	'email': 'sam@somedomain.com',
 	'name': 'Sam'
 })
-
-# Stores it in Redis
-session.save()
 
 # Returns the generated session key
 return session.key()
@@ -133,18 +130,31 @@ import memory
 # Loads the session data from Redis
 session = memory.load(somekey)
 
-# Change data
+# Change data; persisted to Redis automatically
 session['name'] = 'Samuel'
-
-# Store it in Redis
-session.save()
 ```
 
 [ [top](#memory_oc) / [contents](#contents) / [methods](#methods) ]
 
 ## Class
 The class is what is returned from the [`create`](#create),
-[`from_dict`](#from_dict), and [`load`](#load) methods
+[`from_dict`](#from_dict), and [`load`](#load) methods.
+
+Changes are persisted automatically, but only for **top-level** keys. Setting,
+deleting, or updating a top-level field is written to Redis. Mutating a nested
+value in place is not tracked and will not be saved:
+
+```python
+# Persisted
+session['user'] = { 'name': 'Samuel' }
+session.update({ 'name': 'Samuel' })
+
+# Not persisted — nested in-place change
+session['user']['name'] = 'Samuel'
+```
+
+To change nested data, replace the top-level value (or use `update` with a new
+structure).
 
 ### close
 Closes the session in Redis, making it no longer available to anyone.
@@ -192,20 +202,10 @@ print(session.key())
 [ [top](#memory_oc) / [contents](#contents) / [class](#class) ]
 
 ### save
-Stores changes in Redis after updates.
-
-```python
-import memory
-
-# Load a session
-session = memory.load(somekey)
-
-# Make changes
-session['name'] = 'Samuel'
-
-# Save changes
-session.save()
-```
+**Deprecated.** Sessions are written to Redis automatically on `create` and
+whenever a top-level field changes (`__setitem__`, `__setattr__`, `__delitem__`,
+`update`, `ttl`). Nested in-place mutations are not saved. Calling `save()`
+does nothing except emit a `DeprecationWarning`.
 
 [ [top](#memory_oc) / [contents](#contents) / [class](#class) ]
 
@@ -254,14 +254,11 @@ import memory
 # Load session
 session = memory.load(somekey)
 
-# Update multiple fields
+# Update multiple fields; persisted to Redis automatically
 session.update({
 	'name': 'Samuel',
 	'phone': '(555) 123-4567'
 })
-
-# Save changes
-session.save()
 ```
 
 [ [top](#memory_oc) / [contents](#contents) / [class](#class) ]

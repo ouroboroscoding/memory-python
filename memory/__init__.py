@@ -11,7 +11,7 @@ __email__		= "chris@ouroboroscoding.com"
 __created__		= "2023-03-15"
 
 # Limit exports
-__all__ = [ 'close', 'create', 'load' ]
+__all__ = [ 'close', 'create', 'from_dict', 'load' ]
 
 # Ouroboros imports
 from config import config
@@ -23,6 +23,7 @@ from tools import combine
 
 # Python imports
 from copy import deepcopy
+from warnings import warn
 
 # Pip imports
 import json_fix # needed for __json__, do not remove
@@ -63,39 +64,32 @@ def create(key: str = None, ttl: int = 0, data = None) -> _Memory:
 			or combine(data, { '__ttl': ttl })
 	)
 
-	# If we were passed a key
+	# If we were passed a key, claim it atomically (SET NX) so two creates
+	# cannot both succeed for the same key
 	if key:
-
-		# If it exists
-		if _moRedis.exists(key):
+		oMem = _Memory(key, dData)
+		if not oMem._persist(nx = True):
 			raise RuntimeError(f'memory_oc: "{key}" exists')
+		return oMem
 
-		# Set the key
-		sKey = key
+	# Else, loop till we claim a random key, which theoretically is always
+	#	the first try, but on the off chance of collisions, cap retries so
+	#	we fail instead of spinning forever.
+	i = 0
+	while True:
 
-	# Else, loop till we get a key that works, which theoretically is always the
-	#	first time, but on the off chance something breaks, let's have it fully
-	#	break instead of running forever eating up resources.
-	else:
-		i = 0
-		while True:
+		# Generate a random key and try to claim it atomically
+		sKey = 's:%s' % random(32, [ 'aZ', '10', '!*' ])
+		oMem = _Memory(sKey, dData)
+		if oMem._persist(nx = True):
+			return oMem
 
-			# Generate a random key
-			sKey = 's:%s' % random(32, [ 'aZ', '10', '!*' ])
-
-			# If it doesn't exist, break out of the loop
-			if not _moRedis.exists(sKey):
-				break
-
-			# Increment the count
-			i += 1
-			if i > 10:
-				raise RuntimeError(
-					'memory_oc, potential infinite loop in create()'
-				)
-
-	# Create a new Memory using the passed key, or a new random string
-	return _Memory(sKey, dData)
+		# Increment the count
+		i += 1
+		if i > 10:
+			raise RuntimeError(
+				'memory_oc, potential infinite loop in create()'
+			)
 
 def from_dict(value: dict) -> _Memory:
 	"""From Dict
@@ -193,6 +187,9 @@ class _Memory(object):
 
 		del object.__getattribute__(self, '__store')[k]
 
+		# Persist the change
+		self._persist()
+
 	def __getattr__(self, a: str) -> any:
 		"""__getattr__
 
@@ -277,8 +274,11 @@ class _Memory(object):
 		if a.startswith('__'):
 			raise KeyError(f'{a} is read-only')
 
-		# Set the item
+		# Set the item and persist
 		object.__getattribute__(self, '__store').__setitem__(a, v)
+
+		# Persist the changes
+		self._persist()
 
 	def __setitem__(self, k: str, v: any):
 		"""__setitem__
@@ -294,8 +294,11 @@ class _Memory(object):
 		if isinstance(k, str) and k.startswith('__'):
 			raise KeyError(f'{k} is read-only')
 
-		# Set the item
+		# Set the item and persist
 		object.__getattribute__(self, '__store').__setitem__(k, v)
+
+		# Persist the changes
+		self._persist()
 
 	def __str__(self):
 		"""__str__
@@ -341,29 +344,57 @@ class _Memory(object):
 		"""
 		return object.__getattribute__(self, '__key')
 
-	def save(self):
-		"""Save
+	def _persist(self, nx: bool = False) -> bool:
+		"""Persist
 
-		Saves the current session data in the cache.
+		Writes the current session data to the cache. Only called for
+		top-level changes; nested in-place mutations are not tracked.
+
+		Arguments:
+			nx (bool): If True, only set the key when it does not already
+				exist (used by create to avoid races)
+
+		Returns:
+			bool
 		"""
 
-		# Get the store
+		# Get the store and key
 		dStore = object.__getattribute__(self, '__store')
+		sKey = object.__getattribute__(self, '__key')
 
 		# Encode it
 		dJSON = jsonb.encode(dStore)
 
+		# Create-only write: SET NX, with EX when the session expires
+		if nx:
+			if dStore['__ttl'] == 0:
+				return bool(_moRedis.set(sKey, dJSON, nx = True))
+			return bool(
+				_moRedis.set(sKey, dJSON, nx = True, ex = dStore['__ttl'])
+			)
+
 		# If we have no expire time, set forever
 		if dStore['__ttl'] == 0:
-			_moRedis.set(object.__getattribute__(self, '__key'), dJSON)
+			_moRedis.set(sKey, dJSON)
 
 		# Else, set to expire
 		else:
-			_moRedis.setex(
-				object.__getattribute__(self, '__key'),
-				dStore['__ttl'],
-				dJSON
-			)
+			_moRedis.setex(sKey, dStore['__ttl'], dJSON)
+
+		return True
+
+	def save(self):
+		"""Save
+
+		Deprecated. Sessions are persisted automatically on change; this
+		method only remains for backwards compatibility.
+		"""
+		warn(
+			'memory_oc: save() is deprecated; sessions are saved '
+			'automatically when data changes',
+			DeprecationWarning,
+			stacklevel = 2
+		)
 
 	def to_dict(self) -> dict:
 		"""To Dict
@@ -407,7 +438,7 @@ class _Memory(object):
 		# If the value hasn't changed
 		if ttl != dStore['__ttl']:
 			dStore['__ttl'] = ttl
-			self.save()
+			self._persist()
 
 	def update(self, other = (), /, **kwargs):
 		"""Updated
@@ -419,6 +450,14 @@ class _Memory(object):
 			other (dict, list, **kwargs): The additional keys and values to add
 		"""
 
-		# Run through each to guard against __ keys being set
+		# Get the store
+		dStore = object.__getattribute__(self, '__store')
+
+		# Apply each pair, guarding against __ keys, then persist once
 		for k, v in dict(other, **kwargs).items():
-			self[k] = v
+			if isinstance(k, str) and k.startswith('__'):
+				raise KeyError(f'{k} is read-only')
+			dStore[k] = v
+
+		# Persist the changes
+		self._persist()
